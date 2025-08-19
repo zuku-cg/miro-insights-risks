@@ -1,0 +1,67 @@
+Meeting Title: Beacon/Lari - initial meeting 
+Date: Jul 9
+
+Legend
+	•	Me = you (sales/trader)
+	•	Beacon Team = combined voices from the Beacon/Lari side (multiple speakers).
+	•	Data/ML = Beacon data/ML specialist.
+	•	Engineering = Beacon engineering/platform.
+	•	Interjections like “Mhmm/Okay” removed. Filler words trimmed. Obvious mis-hearings preserved where uncertain (e.g., “Barq’s” as in transcript).
+
+Me: I currently use SuperD as the main system to run different strategies. I book every single trade into SuperD and use their ready-made reports for risk views.
+Beacon Team: So that modeling in SuperD is something you created manually based on past executions?
+Me: Yes. It’s not automatic. I enter the trades myself, and then the trace is in the system. I can show later how I book it.
+Me: There are two ways I typically arrive at a trade: (1) looking at the existing client portfolio and screening for opportunities (e.g., short strikes with low delta to buy back), or (2) switching to Jupyter Notebooks I’ve built to scan for price-action signals and surface dislocations. The notebooks pull option data via the Bloomberg API from a local Bloomberg session.
+Beacon Team: Those analytics are your own Python libraries?
+Me: Yes—built in-house. Think of them as an analytics library on top of Beacon with tables and charts.
+Me: After identifying a trade idea, I open Barq’s (Barclays pricer) to model it. For example, selling a 114.50/112 structure with a ratio, buying vol. I check the mid Barq’s is streaming (e.g., 7.60 vs. 7.95).
+Me: I then price the same trade in Bloomberg to compare. Often Bloomberg mid is a bit higher (e.g., 7.06/6.08 vs. Barq’s lower end). Ideally, I’d see a distribution of mids across banks to know what’s high/low/average before launching any RFQ.
+Me: Depending on trade size, some users switch to Digital Vega (EMS) to send RFQs electronically to selected LPs. I often use Bloomberg chats for larger notionals: I’ll message LPs (e.g., Optiver, MS), share the RFQ, discuss deltas, get prices back, and then execute with the best LP.
+Me: Post-execution, I confirm with the LP, book risk, and then use our internal web system (Drax Prime) to book the trade details. For a 4-leg structure, I book four tickets—client side and LP side (we’re effectively match-principal).
+Me: After that, I open SuperD again, price the same structure, and book it so the ticket appears in my risk management system. That’s the end-to-end journey for one trade.
+Me: Pain points: we move across many systems; voice/chat RFQs create unstructured data; and because we don’t own the EMS, we don’t capture execution data cleanly. For small tickets, people revert to voice, which upsets LPs who want those through e‑pipes.
+Beacon Team: Understood. In an ideal world, what’s the MVP?
+Me: A tool that matches the accuracy of Barq’s mids, ideally showing Barq’s mid vs. Bloomberg mid side-by-side, and then lets me launch the RFQ from the same screen—either to Digital Vega or directly via FIX to banks. Reduce operational risk from rekeying the same details across systems. Also, capture all generated data in-house.
+Beacon Team: So conceptually: a new app with columns for Barq’s and Bloomberg mids, maybe a third “Meatball/Mid” column; a Send to Digital Vega button; a Send to Bloomberg Chat option; and ideally a direct FIX route to banks.
+Me: Yes. If the pricer had EMS built-in with direct FIX, that’d be even better. Otherwise, integrate an existing EMS but still store all messages, RFQs, and responses in our own database.
+Beacon Team: What is Drax Prime for?
+Me: It’s a back‑office/middle‑office booking and expiry management system with client limits—no P&L or risk. No API. There’s a central legal-entity system, then per-desk instances (e.g., Drax Prime, Drax Bonus, Drax Small).
+Data/ML: We’ve been working on Bloomberg IB chat and Vault data for months. We can map a trade from Prime back to the chat; next is going the other way. We’re introducing an event stream (e.g., CDC layer) to make the stack more event driven. For Prime, we’ll likely push data to Azure (via Data Factory), then normalize/schema it ourselves.
+Beacon Team: Good to know. Another idea is we provide the development environment to build all this in one place and integrate with your sources.
+Me: Exactly—right now we price in Barq’s; sometimes people avoid Digital Vega and go to Bloomberg chat (operational risk, fragmented data, LP preferences ignored). If we had our own EMS or a simple API from the pricing tool, we could enforce the right path and cut errors.
+Data/ML: Confirmation in chat varies by person (“done,” “thanks,” or just echoing details). We’re building ML to recognize those patterns by individual and classify events. We’re at ~60–80% confidence on some entities now.
+Beacon Team: You mentioned matching Barq’s pricing. Would Beacon compute the price using Barq’s data, or consume Barq’s price as a black box?
+Me: If we can get Barq’s data, great. If not, show Barq’s black-box price side-by-side with Bloomberg/Refinitiv-derived analytics. The key is users trust the mids they see—if they don’t, they won’t stay in Beacon for the first step.
+Beacon Team: What about currencies where Barq’s is weaker or broken tenors that require interpolation?
+Me: Exactly why having multiple feeds helps. Show Barq’s, Bloomberg, and Refinitiv together so users see a range. That improves client P&L management—knowing when a bank price is strong/weak relative to the expected range. Ideally, hit F9 and see mids from all providers at once.
+Me: FIX could provide a read-only mid distribution too, if banks allow us to query prices on demand (not necessarily live streams). Barq’s surface isn’t streamed anyway; I re-calc on F9 while spot streams.
+Beacon Team: For vanilla FX options and first‑gen exotics (barriers, one‑touches), that’s in the initial scope. More complex exotics (e.g., correlation swaps) are out.
+Me: Correct. Also, TradeCheck would help avoid executing with an LP that can’t give up to our PB—this cost us ~100k once and happens a few times a year. The app should pre‑check give‑up feasibility by product/tenor.
+Beacon Team: We’ve heard similar. We can surface by‑broker product eligibility before you RFQ.
+Me: On FIX: I’ve already done a Nomura test—installed a Python FIX lib, sent a JSON, got back a JSON, extracted the price. Very simple. If banks let us in via FIX, are we “buying data” or just requesting quotes? Functionally the same.
+Engineering: We have deep experience ingesting inbound post‑trade FIX; less with outbound quote requests, but the schema exists. We’d integrate rather than build an EMS from scratch (execution reliability, latency, safety). Orchestrate the flow, store all data, but let a mature EMS handle time‑critical execution.
+Data/ML: On chat: we have a service streaming all IB Connect messages. We’ll push it to an event grid with proper RBAC. Bloomberg also offers enrichments (entity labels, sides, etc.), but they’re inconsistent; we’re building our own normalizers and derived tables (who’s in which room, last active, firm, etc.).
+Data/ML: We can detect inquiries, map chats to orders/trades, and maintain a quote table that updates as messages arrive—recognizing structure (instrument, strike, expiry) and attaching a computed mid. Current recognition confidence is improving.
+Data/ML: Message volumes: currently ~100k/day across enabled desks; likely 200–250k/day firmwide. We also hit room limits in Bloomberg due to many rooms and frequent mass blasts. APIs cope—peaks are often blast-driven.
+Beacon Team: For UI, Beacon can do notebooks or custom UIs. We can also show risk plots live while changing quotes.
+Me: Great—if I change a quote, I’d like to see client risk update in real time.
+Data/ML: We have full JSON messages from Bloomberg, plus participants, timestamps, and some enrichments. We’re normalizing firm names across Bloomberg, Prime, and PB schedules to avoid mismatches. Downstream, we can publish to Kafka or a SQL DB if that helps your architecture.
+Beacon Team: We can start with a Beacon Quote variant that shows side‑by‑side data (Barq’s, Bloomberg, Refinitiv) and add a time‑to‑expiry view. Then add the Send to EMS/Chat/FIX actions.
+Me: That’s the right order. Also, capture historical markups by client so the tool suggests typical fees for similar structures. Combine that with current mid and incoming quotes to guide marking.
+Data/ML: On IB APIs: Bloomberg IB Connect is expensive (~“write a large check”), streams raw messages for enabled users/rooms. Their chatbot offering exists but is pricey as well. We can push prepared responses back via Trade Draw/clipboard integration without a full chatbot.
+Beacon Team: For outreach, we could generate a rich reply (quote + graph/table) and paste it back into Bloomberg. Later, an LLM can tailor tone by client.
+Me: Nice to have; first let’s nail the pricing/mids/EMS flow.
+Beacon Team: Agreed. Next steps depend on confirming Barq’s data access. If not, we proceed with black‑box Barq’s pricing + Bloomberg/Refinitiv analytics.
+Me: Sounds good.
+Data/ML: We also track spikes in message volume (often from blasts). Inquiry volume is modest on average but meaningful. We’ll productionize the stream and entity normalization in Azure.
+Beacon Team: For delivery, we’ll target:
+	1	Beacon Quote with multi‑feed mids and time‑to‑expiry view.
+	2	Execution hooks (send to Digital Vega / Chat / FIX).
+	3	Data capture of RFQ lifecycle and pricing distribution.
+Me: Perfect. That would materially improve workflow, reduce operational risk, and keep data in-house.
+
+Notes & Assumptions
+	•	Speaker identities beyond “Me” are grouped as roles where not explicitly identified in the transcript.
+	•	Filler phrases removed; fragmented lines merged into full sentences without changing intent.
+	•	Brand/product names left as heard (e.g., “Barq’s”), since the source text is ambiguous.
+	•	If you want exact named speakers, provide a participant list and I’ll re‑tag lines accordingly.

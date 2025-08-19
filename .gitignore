@@ -1,0 +1,15 @@
+# deps & build artefacts
+node_modules/
+dist/
+.miro-state/
+*.log
+
+# env & secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# OS
+.DS_Store
